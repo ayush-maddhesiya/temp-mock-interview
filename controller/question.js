@@ -1,248 +1,145 @@
-// src/controllers/questionController.ts
-import {Question} from '@model/question';
+import User from '../models/user.js';
 
+/**
+ * Controller to create a new question for a user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
 const createQuestion = async (req, res) => {
-  console.log("you are thier to at creteQuestion");
-  
-  const user = req.user;
-  const credit = user.credit;
-  if( credit > 0 ){
-    res.status(402).json({
+  try {
+    // 1. Get the authenticated user
+    // const user = req.user;
+    // if (!user) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: 'Authentication required'
+    //   });
+    // }
+    const loginUserEmail = "david.miller@example.com"  //change this according to user
+    const user = await User.findOne({ email: loginUserEmail });
+    // 2. Validate credit
+    if (user.credit.total <= user.credit.used) {
+      return res.status(402).json({
+        success: false,
+        message: 'Not enough credits'
+      });
+    }
+
+    // 3. Validate required fields
+    const { title, link, tag, friendEmail,time } = req.body; // Changed from req.query to req.body for POST requests
+
+    if (!title || !link || !tag || !friendEmail || !time) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: title, link, tag, and friendEmail are required'
+      });
+    }
+
+    
+    // 4. Validate tag is one of the allowed values
+    const validTags = ['beginner', 'intermediate', 'advanced'];
+    if (!validTags.includes(tag.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid tag. Must be one of: beginner, intermediate, advanced'
+      });
+    }
+
+    //4.5 Valide time
+    if(time === user.start_time){
+      return res.status(400).json({
+        success: false,
+        message: 'You are already scheduled at this time.'
+      });
+    }
+
+
+
+    // 5. Find friend user
+    const friendUser = await User.findByEmail(friendEmail);
+    if (!friendUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Friend user not found. Please invite them to join first.'
+      });
+    }
+
+    if(time === friendUser.start_time){
+      return res.status(400).json({
+        success: false,
+        message: 'Your friend is already scheduled at this time.'
+      });
+    }
+
+    // 6. Create new question object
+    const newQuestion = {
+      title,
+      link,
+      tag: tag.toLowerCase()
+    };
+
+    // 7. Add question to both users
+    user.questions.push(newQuestion);
+    friendUser.questions.push(newQuestion);
+
+    // 8. Increment used credits
+    user.credit.used += 1;
+
+    // 9. Save both users
+    await Promise.all([
+      user.save(),
+      friendUser.save()
+    ]);
+
+    // 10. Send success response
+    return res.status(201).json({
+      success: true,
+      data: {
+        question: newQuestion,
+        remainingCredits: user.credit.total - user.credit.used
+      },
+      message: 'Question created successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in createQuestion:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Not enough credit'
-    })
-  }
-  // title => Select your interview type
-  //bywhom => Select practice type
-  //frndemail => Enter email
-  const { title, bywhom, frndemail } = req.query;
-  const userexitorNot = await Question.findOne({email: frndemail});
-
-  if(!userexitorNot){
-    res.status(400).json({
-      success: false,
-      message: 'User not found , please invite your friend'
-    })
-  }
-
-
-  const { time }  = req.query;
-
-  const question = new Question({
-    title,
-    bywhom,
-    frndemail,
-    time
-  })
-
-  if(!question){
-    res.status(400).json({
-      success: false,
-      message: 'Question not found'
-    })
-  }
-
-  // const addQuestion = await user.addQuestion(question);
-  user.question = question;
-  userexitorNot.question = question;
-
-  await userexitorNot.save();
-  await user.save();
-
-  res.status(201).json({
-    success: true,
-    data: user.question,
-    message: 'Question added successfully'
-  })
-
-};
-
-const questionController = {
-  // Create a new question
-  async createQuestion(req, res) {
-    try {
-      const { title, link, tag } = req.body;
-
-      const question = new Question({
-        title,
-        link,
-        tag: tag.toLowerCase()
-      });
-
-      const savedQuestion = await question.save();
-      
-      res.status(201).json({
-        success: true,
-        data: savedQuestion
-      });
-    } catch (error ) {
-      res.status(400).json({
-        success: false,
-        message: error.message || 'Failed to create question',
-        ...(error.errors && { errors: error.errors })
-      });
-    }
-  },
-
-  // Get all questions with filtering, pagination and sorting
-  async getQuestions(req, res) {
-    try {
-      const { tag, page = 1, limit = 10, sortBy = '-createdAt' } = req.query   ;
-      
-      // Build query
-      const query = tag ? { tag: tag.toLowerCase() } : {};
-      
-      // Calculate skip value for pagination
-      const skip = (Number(page) - 1) * Number(limit);
-
-      const questions = await Question.find(query)
-        .sort(sortBy)
-        .skip(skip)
-        .limit(Number(limit))
-        .lean();
-
-      // Get total count for pagination
-      const total = await Question.countDocuments(query);
-
-      res.status(200).json({
-        success: true,
-        data: questions,
-        pagination: {
-          currentPage: Number(page),
-          totalPages: Math.ceil(total / Number(limit)),
-          totalItems: total
-        }
-      });
-    } catch (error  ) {
-      res.status(500).json({
-        success: false,
-        message: error.message || 'Failed to fetch questions'
-      });
-    }
-  },
-
-  // Get a single question by ID
-  async getQuestionById(req, res) {
-    try {
-      const { id } = req.params;
-
-      const question = await Question.findById(id).lean();
-
-      if (!question) {
-        return res.status(404).json({
-          success: false,
-          message: 'Question not found'
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: question
-      });
-    } catch (error  ) {
-      res.status(500).json({
-        success: false,
-        message: error.message || 'Failed to fetch question'
-      });
-    }
-  },
-
-
-  // Delete a question
-  async deleteQuestion(req, res) {
-    try {
-      const { id } = req.params;
-
-      const question = await Question.findByIdAndDelete(id);
-
-      if (!question) {
-        return res.status(404).json({
-          success: false,
-          message: 'Question not found'
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Question deleted successfully'
-      });
-    } catch (error  ) {
-      res.status(500).json({
-        success: false,
-        message: error.message || 'Failed to delete question'
-      });
-    }
-  },
-
-  // Get questions by tag
-  async getQuestionsByTag(req, res) {
-    try {
-      const { tag } = req.params;
-      const { page = 1, limit = 10 } = req.query   ;
-
-      const skip = (Number(page) - 1) * Number(limit);
-
-      const questions = await Question.find({ tag: tag.toLowerCase() })
-        .sort('-createdAt')
-        .skip(skip)
-        .limit(Number(limit))
-        .lean();
-
-      const total = await Question.countDocuments({ tag: tag.toLowerCase() });
-
-      res.status(200).json({
-        success: true,
-        data: questions,
-        pagination: {
-          currentPage: Number(page),
-          totalPages: Math.ceil(total / Number(limit)),
-          totalItems: total
-        }
-      });
-    } catch (error  ) {
-      res.status(500).json({
-        success: false,
-        message: error.message || 'Failed to fetch questions'
-      });
-    }
-  },
-
-  // Search questions by title
-  async searchQuestions(req, res) {
-    try {
-      const { query } = req.query;
-      const { page = 1, limit = 10 } = req.query ;
-
-      const skip = (Number(page) - 1) * Number(limit);
-
-      const questions = await Question.find({
-        title: { $regex: query, $options: 'i' }
-      })
-        .sort('-createdAt')
-        .skip(skip)
-        .limit(Number(limit))
-        .lean();
-
-      const total = await Question.countDocuments({
-        title: { $regex: query, $options: 'i' }
-      });
-
-      res.status(200).json({
-        success: true,
-        data: questions,
-        pagination: {
-          currentPage: Number(page),
-          totalPages: Math.ceil(total / Number(limit)),
-          totalItems: total
-        }
-      });
-    } catch (error ) {
-      res.status(500).json({
-        success: false,
-        message: error.message || 'Failed to search questions'
-      });
-    }
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
-module.exports = createQuestion;
+/**
+ * Get all questions for a user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getUserQuestions = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: user.questions,
+      remainingCredits: user.credit.total - user.credit.used
+    });
+
+  } catch (error) {
+    console.error('Error in getUserQuestions:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+export { createQuestion, getUserQuestions };

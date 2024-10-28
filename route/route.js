@@ -12,5 +12,6 @@ router.get("/user", getUser);
 // Question routes
 router.post("/question", createQuestion);
 router.get("/user/questions", getUserQuestions);
+router.get("/user/listofAvaibleuserforMeeting", listofAvaibleuserforMeeting);
 
 export default router;

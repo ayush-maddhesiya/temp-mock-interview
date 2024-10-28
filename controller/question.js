@@ -5,6 +5,36 @@ import User from '../models/user.js';
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
+
+const listofAvaibleuserforMeeting = async (req, res) => {
+
+  try {
+    const allUsers = await User.find();
+    const allUserEmails = allUsers
+      .map(user => user.questions.some(q => q.meetStatus === 'scheduled') ? user.email : null)
+      .filter(email => email !== null);
+
+    if (allUserEmails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No users are scheduled for a meeting."
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: allUserEmails
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+}
+
+
 const createQuestion = async (req, res) => {
   try {
     // 1. Get the authenticated user
@@ -15,6 +45,10 @@ const createQuestion = async (req, res) => {
     //     message: 'Authentication required'
     //   });
     // }
+
+
+
+
     const loginUserEmail = "david.miller@example.com"  //change this according to user
     const user = await User.findOne({ email: loginUserEmail });
     // 2. Validate credit
@@ -26,7 +60,7 @@ const createQuestion = async (req, res) => {
     }
 
     // 3. Validate required fields
-    const { title, link, tag, friendEmail,time } = req.body; // Changed from req.query to req.body for POST requests
+    const { title, link, tag, friendEmail, time } = req.body; // Changed from req.query to req.body for POST requests
 
     if (!title || !link || !tag || !friendEmail || !time) {
       return res.status(400).json({
@@ -35,7 +69,8 @@ const createQuestion = async (req, res) => {
       });
     }
 
-    
+
+
     // 4. Validate tag is one of the allowed values
     const validTags = ['beginner', 'intermediate', 'advanced'];
     if (!validTags.includes(tag.toLowerCase())) {
@@ -46,7 +81,7 @@ const createQuestion = async (req, res) => {
     }
 
     //4.5 Valide time
-    if(time === user.start_time){
+    if (time === user.start_time) {
       return res.status(400).json({
         success: false,
         message: 'You are already scheduled at this time.'
@@ -64,7 +99,7 @@ const createQuestion = async (req, res) => {
       });
     }
 
-    if(time === friendUser.start_time){
+    if (time === friendUser.start_time) {
       return res.status(400).json({
         success: false,
         message: 'Your friend is already scheduled at this time.'
@@ -142,4 +177,4 @@ const getUserQuestions = async (req, res) => {
   }
 };
 
-export { createQuestion, getUserQuestions };
+export { createQuestion, getUserQuestions,listofAvaibleuserforMeeting };

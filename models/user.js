@@ -1,4 +1,6 @@
+import { meet } from 'googleapis/build/src/apis/meet';
 import mongoose from 'mongoose';
+import { type } from 'os';
 
 const userSchema = new mongoose.Schema(
   {
@@ -57,6 +59,12 @@ const userSchema = new mongoose.Schema(
           enum: ['beginner', 'intermediate', 'advanced'],
           lowercase: true,
         },
+        meetStatus: {
+          type: String,
+          trim: true,
+          enum: ['scheduled', 'in-progress', 'completed', 'cancelled'],
+          default: 'scheduled'
+        }
       },
     ],
     credit: {
